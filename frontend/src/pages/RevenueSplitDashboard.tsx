@@ -43,7 +43,7 @@ function buildConicGradient(allocations: RevenueAllocation[]): string {
 }
 
 export default function RevenueSplitDashboard() {
-  const [allocations, setAllocations] = useState<RevenueAllocation[]>([]);
+  const [allocations, setAllocations] = useState<(RevenueAllocation & { id: string })[]>([]);
   const [events, setEvents] = useState<DistributionEvent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -105,7 +105,7 @@ export default function RevenueSplitDashboard() {
           setAllocations([]);
         } else {
           const contractAllocations = await fetchRevenueSplitAllocations(contractId, address);
-          setAllocations(contractAllocations);
+          setAllocations(contractAllocations.map((a, i) => ({ ...a, id: `alloc-${i}-${a.recipient}` })));
         }
 
         const distributionEvents = await fetchDistributionEvents(ORGANIZATION_ID, 1, 50);
@@ -129,6 +129,7 @@ export default function RevenueSplitDashboard() {
           ? {
             ...entry,
             [field]: field === 'percentage' ? Number.parseFloat(value || '0') : value,
+            id: field === 'recipient' ? `alloc-${index}-${value}` : entry.id,
           }
           : entry
       )
@@ -136,7 +137,7 @@ export default function RevenueSplitDashboard() {
   };
 
   const addRecipient = () => {
-    setAllocations((prev) => [...prev, { recipient: '', percentage: 0 }]);
+    setAllocations((prev) => [...prev, { recipient: '', percentage: 0, id: `new-${Date.now()}` }]);
   };
 
   const removeRecipient = (index: number) => {
@@ -240,8 +241,8 @@ export default function RevenueSplitDashboard() {
               {allocations.length === 0 ? (
                 <p className="text-sm text-zinc-400">No allocation data loaded.</p>
               ) : (
-                allocations.map((entry, index) => (
-                  <p key={`${entry.recipient}-${index}`} className="text-xs text-zinc-300">
+                allocations.map((entry) => (
+                  <p key={entry.id} className="text-xs text-zinc-300">
                     {entry.recipient.slice(0, 6)}...{entry.recipient.slice(-4)} -{' '}
                     <span className="font-bold text-white">{entry.percentage.toFixed(2)}%</span>
                   </p>
@@ -271,7 +272,7 @@ export default function RevenueSplitDashboard() {
           <div className="space-y-3">
             {allocations.map((entry, index) => (
               <div
-                key={`${entry.recipient}-${index}`}
+                key={entry.id}
                 className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center"
               >
                 <input

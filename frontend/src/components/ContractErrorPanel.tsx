@@ -68,7 +68,7 @@ export const ContractErrorPanel: React.FC<Props> = ({ error, title = 'Contract E
                                 <span className={styles.xdrLabel}>Raw XDR Result</span>
                                 <button
                                     className={styles.copyBtn}
-                                    onClick={handleCopyXdr}
+                                    onClick={() => { void handleCopyXdr(); }}
                                     title="Copy XDR to clipboard"
                                 >
                                     {isCopied ? <CheckCircle2 size={14} className={styles.successIcon} /> : <Copy size={14} />}
