@@ -25,6 +25,7 @@ import freezeRoutes from '../freezeRoutes.js';
 import contractUpgradeRoutes from '../contractUpgradeRoutes.js';
 import claimRoutes from '../claimRoutes.js';
 import feeRoutes from '../feeRoutes.js';
+import assetPathPaymentRoutes from '../assetPathPaymentRoutes.js';
 
 const router = Router();
 
@@ -48,5 +49,6 @@ router.use('/freeze', apiRateLimit(), freezeRoutes);
 router.use('/contracts', apiRateLimit(), contractUpgradeRoutes);
 router.use('/claims', dataRateLimit(), claimRoutes);
 router.use('/fees', dataRateLimit(), feeRoutes);
+router.use('/path-payments', apiRateLimit(), assetPathPaymentRoutes);
 
 export default router;
