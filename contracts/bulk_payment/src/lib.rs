@@ -11,16 +11,19 @@ use soroban_sdk::{
 #[derive(Copy, Clone, Debug, PartialEq)]
 #[repr(u32)]
 pub enum ContractError {
-    AlreadyInitialized = 1,
-    NotInitialized     = 2,
-    Unauthorized       = 3,
-    EmptyBatch         = 4,
-    BatchTooLarge      = 5,
-    InvalidAmount      = 6,
-    AmountOverflow     = 7,
-    SequenceMismatch   = 8,
-    BatchNotFound      = 9,
-    EntryArchived      = 10,
+    AlreadyInitialized  = 1,
+    NotInitialized      = 2,
+    Unauthorized        = 3,
+    EmptyBatch          = 4,
+    BatchTooLarge       = 5,
+    InvalidAmount       = 6,
+    AmountOverflow      = 7,
+    SequenceMismatch    = 8,
+    BatchNotFound       = 9,
+    DailyLimitExceeded  = 10,
+    WeeklyLimitExceeded = 11,
+    MonthlyLimitExceeded = 12,
+    InvalidLimitConfig  = 13,
 }
 
 // ── Events ────────────────────────────────────────────────────────────────────
@@ -45,6 +48,23 @@ pub struct PaymentSkippedEvent {
     pub amount: i128,
 }
 
+#[contractevent]
+pub struct TransactionBlockedEvent {
+    pub account: Address,
+    pub attempted_amount: i128,
+    pub limit_type: LimitTier,
+    pub current_usage: i128,
+    pub cap: i128,
+}
+
+#[contractevent]
+pub struct LimitsUpdatedEvent {
+    pub account: Address,
+    pub daily_limit: i128,
+    pub weekly_limit: i128,
+    pub monthly_limit: i128,
+}
+
 // ── Storage types ─────────────────────────────────────────────────────────────
 
 #[contracttype]
@@ -66,12 +86,50 @@ pub struct BatchRecord {
     pub status: Symbol,
 }
 
+/// Configurable limit tiers per account.
+/// A cap value of 0 means "no limit" for that tier.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct AccountLimits {
+    pub daily_limit: i128,
+    pub weekly_limit: i128,
+    pub monthly_limit: i128,
+}
+
+/// Tracks cumulative spending within each rolling window.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct AccountUsage {
+    pub daily_spent: i128,
+    pub daily_reset_ledger: u32,
+    pub weekly_spent: i128,
+    pub weekly_reset_ledger: u32,
+    pub monthly_spent: i128,
+    pub monthly_reset_ledger: u32,
+}
+
+/// Tier identifier used in events.
+#[contracttype]
+#[derive(Copy, Clone, Debug, PartialEq)]
+#[repr(u32)]
+pub enum LimitTier {
+    Daily   = 0,
+    Weekly  = 1,
+    Monthly = 2,
+}
+
 #[contracttype]
 pub enum DataKey {
     Admin,
     BatchCount,
     Batch(u64),
     Sequence,
+    /// Per-account configurable limits
+    AcctLimits(Address),
+    /// Per-account rolling usage tracker
+    AcctUsage(Address),
+    /// Default limits applied to all accounts without overrides
+    DefaultLimits,
     TotalBonusesPaid,
 }
 
@@ -80,6 +138,15 @@ const PERSISTENT_TTL_THRESHOLD: u32 = 20_000;
 const PERSISTENT_TTL_EXTEND_TO: u32 = 120_000;
 const TEMPORARY_TTL_THRESHOLD: u32 = 2_000;
 const TEMPORARY_TTL_EXTEND_TO: u32 = 20_000;
+
+// Approximate ledger counts for time windows.
+// Stellar closes a ledger roughly every 5 seconds.
+// Daily  ≈ 86_400 / 5 = 17_280
+// Weekly ≈ 7 × 17_280 = 120_960
+// Monthly ≈ 30 × 17_280 = 518_400
+const LEDGERS_PER_DAY: u32   = 17_280;
+const LEDGERS_PER_WEEK: u32  = 120_960;
+const LEDGERS_PER_MONTH: u32 = 518_400;
 
 // ── Contract ──────────────────────────────────────────────────────────────────
 
@@ -117,6 +184,78 @@ impl BulkPaymentContract {
         Ok(())
     }
 
+    // ── Limit management (admin-only) ─────────────────────────────────────
+
+    /// Set default limits applied to all accounts that don't have overrides.
+    /// A cap of 0 means "unlimited" for that tier.
+    pub fn set_default_limits(
+        env: Env,
+        daily: i128,
+        weekly: i128,
+        monthly: i128,
+    ) -> Result<(), ContractError> {
+        Self::require_admin(&env)?;
+        Self::validate_limits(daily, weekly, monthly)?;
+
+        let limits = AccountLimits {
+            daily_limit: daily,
+            weekly_limit: weekly,
+            monthly_limit: monthly,
+        };
+        env.storage().instance().set(&DataKey::DefaultLimits, &limits);
+        Ok(())
+    }
+
+    /// Override limits for a specific trusted account.
+    /// A cap of 0 means "unlimited" for that tier.
+    pub fn set_account_limits(
+        env: Env,
+        account: Address,
+        daily: i128,
+        weekly: i128,
+        monthly: i128,
+    ) -> Result<(), ContractError> {
+        Self::require_admin(&env)?;
+        Self::validate_limits(daily, weekly, monthly)?;
+
+        let limits = AccountLimits {
+            daily_limit: daily,
+            weekly_limit: weekly,
+            monthly_limit: monthly,
+        };
+        env.storage().persistent().set(&DataKey::AcctLimits(account.clone()), &limits);
+
+        LimitsUpdatedEvent {
+            account,
+            daily_limit: daily,
+            weekly_limit: weekly,
+            monthly_limit: monthly,
+        };
+
+        Ok(())
+    }
+
+    /// Remove per-account overrides so the account falls back to default limits.
+    pub fn remove_account_limits(env: Env, account: Address) -> Result<(), ContractError> {
+        Self::require_admin(&env)?;
+        env.storage().persistent().remove(&DataKey::AcctLimits(account));
+        Ok(())
+    }
+
+    /// Query the effective limits for an account (per-account override or defaults).
+    pub fn get_account_limits(env: Env, account: Address) -> AccountLimits {
+        Self::effective_limits(&env, &account)
+    }
+
+    /// Query the current usage counters for an account.
+    pub fn get_account_usage(env: Env, account: Address) -> AccountUsage {
+        Self::current_usage(&env, &account)
+    }
+
+    // ── Batch execution ───────────────────────────────────────────────────
+
+    /// All-or-nothing batch. Any failed transfer reverts the entire call.
+    /// Wrap in a fee-bump transaction envelope off-chain for high-traffic scenarios.
     /// Gas-optimized all-or-nothing batch payment.
     ///
     /// Optimizations vs. the original implementation:
@@ -167,6 +306,19 @@ impl BulkPaymentContract {
             // Transfer directly: sender → recipient (sender auth already checked)
             token_client.transfer(&sender, &op.recipient, &op.amount);
         }
+
+        // ── Check account-level transaction limits ────────────────────────
+        Self::check_limits(&env, &sender, total)?;
+
+        let token_client = token::Client::new(&env, &token);
+        token_client.transfer(&sender, &env.current_contract_address(), &total);
+
+        for op in payments.iter() {
+            token_client.transfer(&env.current_contract_address(), &op.recipient, &op.amount);
+        }
+
+        // ── Record usage after successful execution ───────────────────────
+        Self::record_usage(&env, &sender, total);
 
         // Write batch record to persistent storage (cheaper than instance for
         // historical data that does not need to be loaded on every invocation).
@@ -244,6 +396,9 @@ impl BulkPaymentContract {
             }
         }
 
+        // ── Check account-level transaction limits ────────────────────────
+        Self::check_limits(&env, &sender, total)?;
+
         let token_client = token::Client::new(&env, &token);
         // Cache the contract address — avoids repeated cross-environment calls.
         let contract_addr = env.current_contract_address();
@@ -299,6 +454,9 @@ impl BulkPaymentContract {
         if remaining > 0 {
             token_client.transfer(&contract_addr, &sender, &remaining);
         }
+
+        // ── Record usage for the amount actually sent ─────────────────────
+        Self::record_usage(&env, &sender, total_sent);
 
         let status = if fail_count == 0 {
             symbol_short!("completed")
@@ -434,6 +592,137 @@ impl BulkPaymentContract {
         count
     }
 
+    /// Validate that limit values are non-negative.
+    fn validate_limits(daily: i128, weekly: i128, monthly: i128) -> Result<(), ContractError> {
+        if daily < 0 || weekly < 0 || monthly < 0 {
+            return Err(ContractError::InvalidLimitConfig);
+        }
+        Ok(())
+    }
+
+    /// Return the effective limits for an account:
+    /// per-account override > default limits > unlimited (all zeros).
+    fn effective_limits(env: &Env, account: &Address) -> AccountLimits {
+        // Check for per-account override first
+        if let Some(limits) = env
+            .storage()
+            .persistent()
+            .get::<DataKey, AccountLimits>(&DataKey::AcctLimits(account.clone()))
+        {
+            return limits;
+        }
+        // Fall back to default limits
+        if let Some(limits) = env
+            .storage()
+            .instance()
+            .get::<DataKey, AccountLimits>(&DataKey::DefaultLimits)
+        {
+            return limits;
+        }
+        // No limits configured → unlimited
+        AccountLimits {
+            daily_limit: 0,
+            weekly_limit: 0,
+            monthly_limit: 0,
+        }
+    }
+
+    /// Return the current usage for an account, resetting any expired windows.
+    fn current_usage(env: &Env, account: &Address) -> AccountUsage {
+        let ledger = env.ledger().sequence();
+        let mut usage: AccountUsage = env
+            .storage()
+            .persistent()
+            .get(&DataKey::AcctUsage(account.clone()))
+            .unwrap_or(AccountUsage {
+                daily_spent: 0,
+                daily_reset_ledger: ledger,
+                weekly_spent: 0,
+                weekly_reset_ledger: ledger,
+                monthly_spent: 0,
+                monthly_reset_ledger: ledger,
+            });
+
+        // Reset expired windows
+        if ledger >= usage.daily_reset_ledger + LEDGERS_PER_DAY {
+            usage.daily_spent = 0;
+            usage.daily_reset_ledger = ledger;
+        }
+        if ledger >= usage.weekly_reset_ledger + LEDGERS_PER_WEEK {
+            usage.weekly_spent = 0;
+            usage.weekly_reset_ledger = ledger;
+        }
+        if ledger >= usage.monthly_reset_ledger + LEDGERS_PER_MONTH {
+            usage.monthly_spent = 0;
+            usage.monthly_reset_ledger = ledger;
+        }
+
+        usage
+    }
+
+    /// Check limits for an account before executing a batch.
+    /// Emits a `TransactionBlockedEvent` and returns an error if any cap is exceeded.
+    fn check_limits(env: &Env, account: &Address, amount: i128) -> Result<(), ContractError> {
+        let limits = Self::effective_limits(env, account);
+        let usage = Self::current_usage(env, account);
+
+        // Daily check (0 means unlimited)
+        if limits.daily_limit > 0 {
+            let projected = usage.daily_spent + amount;
+            if projected > limits.daily_limit {
+                TransactionBlockedEvent {
+                    account: account.clone(),
+                    attempted_amount: amount,
+                    limit_type: LimitTier::Daily,
+                    current_usage: usage.daily_spent,
+                    cap: limits.daily_limit,
+                };
+                return Err(ContractError::DailyLimitExceeded);
+            }
+        }
+
+        // Weekly check
+        if limits.weekly_limit > 0 {
+            let projected = usage.weekly_spent + amount;
+            if projected > limits.weekly_limit {
+                TransactionBlockedEvent {
+                    account: account.clone(),
+                    attempted_amount: amount,
+                    limit_type: LimitTier::Weekly,
+                    current_usage: usage.weekly_spent,
+                    cap: limits.weekly_limit,
+                };
+                return Err(ContractError::WeeklyLimitExceeded);
+            }
+        }
+
+        // Monthly check
+        if limits.monthly_limit > 0 {
+            let projected = usage.monthly_spent + amount;
+            if projected > limits.monthly_limit {
+                TransactionBlockedEvent {
+                    account: account.clone(),
+                    attempted_amount: amount,
+                    limit_type: LimitTier::Monthly,
+                    current_usage: usage.monthly_spent,
+                    cap: limits.monthly_limit,
+                };
+                return Err(ContractError::MonthlyLimitExceeded);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Record cumulative spending for an account after a successful batch.
+    fn record_usage(env: &Env, account: &Address, amount: i128) {
+        let mut usage = Self::current_usage(env, account);
+        usage.daily_spent += amount;
+        usage.weekly_spent += amount;
+        usage.monthly_spent += amount;
+        env.storage()
+            .persistent()
+            .set(&DataKey::AcctUsage(account.clone()), &usage);
     fn bump_core_ttl(env: &Env) {
         for key in [DataKey::Admin, DataKey::BatchCount, DataKey::Sequence] {
             if env.storage().persistent().has(&key) {
