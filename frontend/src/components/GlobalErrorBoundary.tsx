@@ -45,7 +45,7 @@ export default class GlobalErrorBoundary extends React.Component<
 
       if (React.isValidElement(fallback)) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        return React.cloneElement(fallback as any, props);
+        return React.cloneElement(fallback as React.ReactElement<any>, props);
       }
 
       if (typeof fallback === 'function') {
