@@ -42,7 +42,7 @@ function TimelineSkeleton() {
 }
 
 export default function TransactionHistory() {
-  const { t } = useTranslation();
+  useTranslation();
   const [filters, setFilters] = useState<HistoryFilters>(DEFAULT_FILTERS);
   const [debouncedFilters, setDebouncedFilters] = useState<HistoryFilters>(DEFAULT_FILTERS);
   const [items, setItems] = useState<TimelineItem[]>([]);

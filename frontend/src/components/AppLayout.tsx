@@ -14,7 +14,7 @@ const PageWrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 // ── Layout ────────────────────────────
 const AppLayout: React.FC = () => {
   const location = useLocation();
-  const { t } = useTranslation();
+  useTranslation();
 
   return (
     <div
