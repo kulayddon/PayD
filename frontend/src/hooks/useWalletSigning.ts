@@ -29,8 +29,7 @@ export function useWalletSigning() {
       if (!skipSimulation) {
         const simResult = await simulateTransaction({
           envelopeXdr: xdr,
-          sourceAccount: connectedAddress,
-        } as any);
+        });
         if (!simResult.success) {
           throw new Error(simResult.description || 'Pre-flight simulation failed');
         }
