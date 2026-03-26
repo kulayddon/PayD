@@ -1,5 +1,5 @@
 #![no_std]
-use soroban_sdk::{contract, contractimpl, contracttype, token, Address, Env};
+use soroban_sdk::{contract, contractimpl, contracttype, token, Address, Env, String};
 
 #[contracttype]
 #[derive(Clone)]
@@ -18,13 +18,37 @@ pub struct VestingConfig {
 #[contracttype]
 pub enum DataKey {
     Config,
+    /// Tracks the last ledger sequence in which a claim was processed.
+    LastClaimLedger,
+    /// Tracks the last ledger sequence in which a clawback was processed.
+    LastClawbackLedger,
 }
+
+const PERSISTENT_TTL_THRESHOLD: u32 = 20_000;
+const PERSISTENT_TTL_EXTEND_TO: u32 = 120_000;
 
 #[contract]
 pub struct VestingContract;
 
 #[contractimpl]
 impl VestingContract {
+    // ── SEP-0034 Contract Metadata (Issue #263) ───────────────────────────
+
+    /// Returns the human-readable contract name (SEP-0034).
+    pub fn name(env: Env) -> String {
+        String::from_str(&env, "PayD Vesting Escrow")
+    }
+
+    /// Returns the contract version string (SEP-0034).
+    pub fn version(env: Env) -> String {
+        String::from_str(&env, "0.0.1")
+    }
+
+    /// Returns the contract author / organization (SEP-0034).
+    pub fn author(env: Env) -> String {
+        String::from_str(&env, "The Aha Company")
+    }
+
     pub fn initialize(
         e: Env,
         funder: Address,
@@ -36,7 +60,7 @@ impl VestingContract {
         amount: i128,
         clawback_admin: Address,
     ) {
-        if e.storage().instance().has(&DataKey::Config) {
+        if e.storage().persistent().has(&DataKey::Config) {
             panic!("Already initialized");
         }
         
@@ -62,7 +86,8 @@ impl VestingContract {
             is_active: true,
         };
 
-        e.storage().instance().set(&DataKey::Config, &config);
+        e.storage().persistent().set(&DataKey::Config, &config);
+        Self::bump_config_ttl(&e);
         
         // Transfer tokens from funder to contract
         let client = token::Client::new(&e, &token);
@@ -70,9 +95,12 @@ impl VestingContract {
     }
 
     pub fn claim(e: Env) {
-        let mut config: VestingConfig = e.storage().instance().get(&DataKey::Config).expect("Not initialized");
+        let mut config: VestingConfig = e.storage().persistent().get(&DataKey::Config).expect("Config entry unavailable; restore and retry");
         
         config.beneficiary.require_auth();
+
+        // Ledger sequence verification: prevent duplicate claims in the same ledger
+        Self::require_unique_ledger(&e, &DataKey::LastClaimLedger);
         
         let vested = Self::calc_vested(&e, &config);
         let claimable = vested - config.claimed_amount;
@@ -84,7 +112,8 @@ impl VestingContract {
 
         // Update state
         config.claimed_amount += claimable;
-        e.storage().instance().set(&DataKey::Config, &config);
+        e.storage().persistent().set(&DataKey::Config, &config);
+        Self::bump_config_ttl(&e);
 
         // Transfer tokens
         let client = token::Client::new(&e, &config.token);
@@ -92,9 +121,12 @@ impl VestingContract {
     }
     
     pub fn clawback(e: Env) {
-        let mut config: VestingConfig = e.storage().instance().get(&DataKey::Config).expect("Not initialized");
+        let mut config: VestingConfig = e.storage().persistent().get(&DataKey::Config).expect("Config entry unavailable; restore and retry");
         
         config.clawback_admin.require_auth();
+
+        // Ledger sequence verification: prevent duplicate clawback in the same ledger
+        Self::require_unique_ledger(&e, &DataKey::LastClawbackLedger);
         
         if !config.is_active {
             panic!("Already revoked/inactive");
@@ -110,7 +142,8 @@ impl VestingContract {
         // We set total_amount to vested, so effectively the grant is capped at what was vested at this moment
         config.total_amount = vested;
         config.is_active = false;
-        e.storage().instance().set(&DataKey::Config, &config);
+        e.storage().persistent().set(&DataKey::Config, &config);
+        Self::bump_config_ttl(&e);
 
         if unvested > 0 {
             // Return unvested tokens to admin
@@ -120,18 +153,29 @@ impl VestingContract {
     }
 
     pub fn get_vested_amount(e: Env) -> i128 {
-        let config: VestingConfig = e.storage().instance().get(&DataKey::Config).expect("Not initialized");
+        let config: VestingConfig = e.storage().persistent().get(&DataKey::Config).expect("Config entry unavailable; restore and retry");
+        Self::bump_config_ttl(&e);
         Self::calc_vested(&e, &config)
     }
     
     pub fn get_claimable_amount(e: Env) -> i128 {
-        let config: VestingConfig = e.storage().instance().get(&DataKey::Config).expect("Not initialized");
+        let config: VestingConfig = e.storage().persistent().get(&DataKey::Config).expect("Config entry unavailable; restore and retry");
+        Self::bump_config_ttl(&e);
         let vested = Self::calc_vested(&e, &config);
         vested - config.claimed_amount
     }
     
     pub fn get_config(e: Env) -> VestingConfig {
-        e.storage().instance().get(&DataKey::Config).expect("Not initialized")
+        let config: VestingConfig = e.storage().persistent().get(&DataKey::Config).expect("Config entry unavailable; restore and retry");
+        Self::bump_config_ttl(&e);
+        config
+    }
+
+    /// Extends TTL for the vesting configuration entry.
+    pub fn bump_ttl(e: Env) {
+        let config: VestingConfig = e.storage().persistent().get(&DataKey::Config).expect("Config entry unavailable; restore and retry");
+        config.clawback_admin.require_auth();
+        Self::bump_config_ttl(&e);
     }
 
     fn calc_vested(e: &Env, config: &VestingConfig) -> i128 {
@@ -155,6 +199,42 @@ impl VestingContract {
         let duration = config.duration_seconds as i128;
         
         total.checked_mul(elapsed).unwrap().checked_div(duration).unwrap()
+    }
+
+    /// Returns the ledger sequence of the last successful claim.
+    pub fn get_last_claim_ledger(e: Env) -> u32 {
+        e.storage().persistent().get(&DataKey::LastClaimLedger).unwrap_or(0)
+    }
+
+    /// Returns the ledger sequence of the last successful clawback.
+    pub fn get_last_clawback_ledger(e: Env) -> u32 {
+        e.storage().persistent().get(&DataKey::LastClawbackLedger).unwrap_or(0)
+    }
+
+    /// Ensures the operation has not already been executed in the current ledger
+    /// sequence, preventing replay attacks. Records the current ledger on success.
+    fn require_unique_ledger(e: &Env, key: &DataKey) {
+        let current_ledger = e.ledger().sequence();
+        let last_ledger: u32 = e.storage().persistent().get(key).unwrap_or(0);
+        if last_ledger == current_ledger && current_ledger != 0 {
+            panic!("Operation already processed in this ledger sequence");
+        }
+        e.storage().persistent().set(key, &current_ledger);
+        e.storage().persistent().extend_ttl(
+            key,
+            PERSISTENT_TTL_THRESHOLD,
+            PERSISTENT_TTL_EXTEND_TO,
+        );
+    }
+
+    fn bump_config_ttl(e: &Env) {
+        if e.storage().persistent().has(&DataKey::Config) {
+            e.storage().persistent().extend_ttl(
+                &DataKey::Config,
+                PERSISTENT_TTL_THRESHOLD,
+                PERSISTENT_TTL_EXTEND_TO,
+            );
+        }
     }
 }
 

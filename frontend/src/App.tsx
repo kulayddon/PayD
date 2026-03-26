@@ -1,4 +1,5 @@
 import { Routes, Route } from 'react-router-dom';
+import { useEffect } from 'react';
 import Home from './pages/Home';
 import Debugger from './pages/Debugger';
 import PayrollScheduler from './pages/PayrollScheduler';
@@ -11,15 +12,25 @@ import Settings from './pages/Settings';
 import CustomReportBuilder from './pages/CustomReportBuilder';
 import CrossAssetPayment from './pages/CrossAssetPayment';
 import TransactionHistory from './pages/TransactionHistory';
-
-import AdminPanel from './pages/AdminPanel';
+import RevenueSplitDashboard from './pages/RevenueSplitDashboard';
+import BulkPayrollUpload from './pages/BulkPayrollUpload';
+import PayrollAnalytics from './pages/PayrollAnalytics';
 
 import EmployeePortal from './pages/EmployeePortal';
-
+import Login from './pages/Login';
+import AuthCallback from './pages/AuthCallback';
 import { useTranslation } from 'react-i18next';
+import { contractService } from './services/contracts';
 
 function App() {
   const { t } = useTranslation();
+
+  // Initialize contract service on app startup
+  useEffect(() => {
+    contractService.initialize().catch((error) => {
+      console.error('Failed to initialize contract service:', error);
+    });
+  }, []);
 
   return (
     <Routes>
@@ -155,13 +166,31 @@ function App() {
           }
         />
         <Route
-          path="/admin"
+          path="/revenue-split"
           element={
             <ErrorBoundary fallback={<ErrorFallback onReset={() => {}} />}>
-              <AdminPanel />
+              <RevenueSplitDashboard />
             </ErrorBoundary>
           }
         />
+        <Route
+          path="/analytics"
+          element={
+            <ErrorBoundary fallback={<ErrorFallback />}>
+              <PayrollAnalytics />
+            </ErrorBoundary>
+          }
+        />
+        <Route
+          path="/bulk-upload"
+          element={
+            <ErrorBoundary fallback={<ErrorFallback />}>
+              <BulkPayrollUpload />
+            </ErrorBoundary>
+          }
+        />
+        <Route path="/login" element={<Login />} />
+        <Route path="/auth-callback" element={<AuthCallback />} />
       </Route>
     </Routes>
   );

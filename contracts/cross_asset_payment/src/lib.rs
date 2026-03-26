@@ -26,6 +26,8 @@ pub enum DataKey {
     Admin,
     Payment(u64),
     PaymentCount,
+    /// Tracks the last ledger sequence in which a payment was initiated (per sender).
+    LastPaymentLedger(Address),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -45,13 +47,37 @@ pub struct CrossAssetPaymentContract;
 
 #[contractimpl]
 impl CrossAssetPaymentContract {
+    // ── SEP-0034 Contract Metadata (Issue #263) ───────────────────────────
+
+    /// Returns the human-readable contract name (SEP-0034).
+    pub fn name(env: Env) -> String {
+        String::from_str(&env, "PayD Cross-Asset Payment")
+    }
+
+    /// Returns the contract version string (SEP-0034).
+    pub fn version(env: Env) -> String {
+        String::from_str(&env, "0.0.1")
+    }
+
+    /// Returns the contract author / organization (SEP-0034).
+    pub fn author(env: Env) -> String {
+        String::from_str(&env, "The Aha Company")
+    }
+
     /// Initialize the contract with an admin.
     pub fn init(env: Env, admin: Address) {
-        if env.storage().instance().has(&DataKey::Admin) {
+        if env.storage().persistent().has(&DataKey::Admin) {
             panic!("Already initialized");
         }
-        env.storage().instance().set(&DataKey::Admin, &admin);
-        env.storage().instance().set(&DataKey::PaymentCount, &0u64);
+        env.storage().persistent().set(&DataKey::Admin, &admin);
+        env.storage().persistent().set(&DataKey::PaymentCount, &0u64);
+        Self::bump_core_ttl(&env);
+    }
+
+    /// Extends TTL for critical config/counter keys.
+    pub fn bump_ttl(env: Env) {
+        Self::require_admin(&env);
+        Self::bump_core_ttl(&env);
     }
 
     /// Initiate a cross-asset payment.
@@ -66,14 +92,23 @@ impl CrossAssetPaymentContract {
     ) -> u64 {
         from.require_auth();
 
+        // Ledger sequence verification: prevent duplicate payments from the same sender in one ledger
+        Self::require_unique_ledger(&env, &from);
+
         // Transfer funds from sender to this contract (escrow)
         let token_client = token::Client::new(&env, &asset);
         token_client.transfer(&from, &env.current_contract_address(), &amount);
 
         // Increment payment counter
-        let mut count: u64 = env.storage().instance().get(&DataKey::PaymentCount).unwrap_or(0);
+        Self::bump_core_ttl(&env);
+        let mut count: u64 = env.storage().persistent().get(&DataKey::PaymentCount).unwrap_or(0);
         count += 1;
-        env.storage().instance().set(&DataKey::PaymentCount, &count);
+        env.storage().persistent().set(&DataKey::PaymentCount, &count);
+        env.storage().persistent().extend_ttl(
+            &DataKey::PaymentCount,
+            PERSISTENT_TTL_THRESHOLD,
+            PERSISTENT_TTL_EXTEND_TO,
+        );
 
         // Store the payment record
         let record = PaymentRecord {
@@ -101,8 +136,7 @@ impl CrossAssetPaymentContract {
 
     /// Update the status of a payment (Admin or Anchor authorized).
     pub fn update_status(env: Env, payment_id: u64, new_status: Symbol) {
-        let admin: Address = env.storage().instance().get(&DataKey::Admin).expect("Not initialized");
-        admin.require_auth();
+        Self::require_admin(&env);
 
         let key = DataKey::Payment(payment_id);
         let mut record: PaymentRecord = env.storage().persistent()

@@ -7,6 +7,8 @@ import { useAutosave } from '../hooks/useAutosave';
 import { generateWallet } from '../services/stellar';
 import { useTranslation } from 'react-i18next';
 import { useNotification } from '../hooks/useNotification';
+import { HelpLink } from '../components/HelpLink';
+import { SUPPORTED_ASSETS } from '../config/assets';
 
 interface EmployeeFormState {
   fullName: string;
@@ -73,6 +75,7 @@ const mockEmployees: EmployeeItem[] = [
 
 export default function EmployeeEntry() {
   const [isAdding, setIsAdding] = useState(false);
+  const [employees, setEmployees] = useState<EmployeeItem[]>(mockEmployees);
   const [formData, setFormData] = useState<EmployeeFormState>(initialFormState);
   const [notification, setNotification] = useState<{
     message: string;
@@ -80,7 +83,7 @@ export default function EmployeeEntry() {
     walletAddress?: string;
     employeeName?: string;
   } | null>(null);
-  const { notifySuccess } = useNotification();
+  const { notifySuccess, notify } = useNotification();
   const { saving, lastSaved, loadSavedData } = useAutosave<EmployeeFormState>(
     'employee-entry-draft',
     formData
@@ -91,8 +94,9 @@ export default function EmployeeEntry() {
     const saved = loadSavedData();
     if (saved) {
       setFormData(saved);
+      notify('Recovered unsaved employee draft');
     }
-  }, [loadSavedData]);
+  }, [loadSavedData, notify]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -248,28 +252,25 @@ export default function EmployeeEntry() {
               onChange={handleChange}
               placeholder="Leave blank to generate a wallet"
             />
-            <Select
-              id="role"
-              fieldSize="md"
-              label="Role"
-              value={formData.role}
-              onChange={(e) => handleSelectChange('role', e.target.value)}
-            >
-              <option value="contractor">Contractor</option>
-              <option value="full-time">Full Time</option>
-              <option value="part-time">Part Time</option>
-            </Select>
-            <Select
-              id="currency"
-              fieldSize="md"
-              label="Preferred Currency"
-              value={formData.currency}
-              onChange={(e) => handleSelectChange('currency', e.target.value)}
-            >
-              <option value="USDC">USDC</option>
-              <option value="XLM">XLM</option>
-              <option value="EURC">EURC</option>
-            </Select>
+            <div className="flex items-center gap-2">
+              <Select
+                id="currency"
+                fieldSize="md"
+                label="Preferred Payout Asset"
+                note="The employee will receive salary in this asset. A trustline must exist in their wallet."
+                value={formData.currency}
+                onChange={(e) => handleSelectChange('currency', e.target.value)}
+              >
+                {SUPPORTED_ASSETS.map((asset) => (
+                  <option key={asset.code} value={asset.code}>
+                    {asset.label}
+                  </option>
+                ))}
+              </Select>
+              <div className="pt-6">
+                <HelpLink topic="trustline" variant="icon-text" size="sm" />
+              </div>
+            </div>
             <Button type="submit" variant="primary" size="md">
               Add Employee
             </Button>
@@ -283,9 +284,10 @@ export default function EmployeeEntry() {
     <div className="flex-1 flex flex-col items-center justify-start p-12 max-w-6xl mx-auto w-full">
       <div className="w-full mb-12 flex items-end justify-between border-b border-hi pb-8">
         <div>
-          <h1 className="text-4xl font-black mb-2 tracking-tight">
+          <h1 className="text-4xl font-black mb-2 tracking-tight flex items-center gap-3">
             {t('employees.title', { highlight: '' }).replace('{{highlight}}', '')}
             <span className="text-accent"> {t('employees.titleHighlight')}</span>
+            <HelpLink topic="add employee" variant="icon" size="sm" />
           </h1>
           <p className="text-muted font-mono text-sm tracking-wider uppercase">
             {t('employees.subtitle')}
@@ -302,9 +304,23 @@ export default function EmployeeEntry() {
       </div>
 
       <EmployeeList
-        employees={mockEmployees}
+        employees={employees}
         onEmployeeClick={(employee) => console.log('Clicked:', employee.name)}
-        onAddEmployee={(employee) => console.log('Added:', employee)}
+        onAddEmployee={(employee) => {
+          setEmployees((prev) => [...prev, employee]);
+          notifySuccess(`Added ${employee.name}`);
+        }}
+        onEditEmployee={(employee) => {
+          setEmployees((prev) => prev.map((item) => (item.id === employee.id ? employee : item)));
+        }}
+        onRemoveEmployee={(id) => {
+          setEmployees((prev) => prev.filter((item) => item.id !== id));
+        }}
+        onUpdateEmployeeImage={(id, imageUrl) => {
+          setEmployees((prev) =>
+            prev.map((item) => (item.id === id ? { ...item, imageUrl } : item))
+          );
+        }}
       />
     </div>
   );

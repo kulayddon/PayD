@@ -1,6 +1,6 @@
 #![no_std]
 
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, Vec, token};
+use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, String, Vec, token};
 
 #[cfg(test)]
 mod test;
@@ -9,6 +9,8 @@ mod test;
 pub enum DataKey {
     Admin,
     Recipients,
+    /// Tracks the last ledger sequence in which a distribution was processed.
+    LastDistributeLedger,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -25,9 +27,26 @@ pub struct RevenueSplitContract;
 
 #[contractimpl]
 impl RevenueSplitContract {
+    // ── SEP-0034 Contract Metadata (Issue #263) ───────────────────────────
+
+    /// Returns the human-readable contract name (SEP-0034).
+    pub fn name(env: Env) -> String {
+        String::from_str(&env, "PayD Revenue Split")
+    }
+
+    /// Returns the contract version string (SEP-0034).
+    pub fn version(env: Env) -> String {
+        String::from_str(&env, "0.0.1")
+    }
+
+    /// Returns the contract author / organization (SEP-0034).
+    pub fn author(env: Env) -> String {
+        String::from_str(&env, "The Aha Company")
+    }
+
     /// Initialize the contract with an admin and an initial set of recipients/shares.
     pub fn init(env: Env, admin: Address, shares: Vec<RecipientShare>) {
-        if env.storage().instance().has(&DataKey::Admin) {
+        if env.storage().persistent().has(&DataKey::Admin) {
             panic!("Already initialized");
         }
         
@@ -50,14 +69,15 @@ impl RevenueSplitContract {
 
     /// Allows the current admin to set a new admin.
     pub fn set_admin(env: Env, new_admin: Address) {
-        let admin: Address = env.storage().instance().get(&DataKey::Admin).expect("Not initialized");
+        let admin: Address = env.storage().persistent().get(&DataKey::Admin).expect("Admin entry unavailable; restore and retry");
         admin.require_auth();
-        env.storage().instance().set(&DataKey::Admin, &new_admin);
+        env.storage().persistent().set(&DataKey::Admin, &new_admin);
+        Self::bump_core_ttl(&env);
     }
 
     /// Updates the recipient splits dynamically (admin only).
     pub fn update_recipients(env: Env, new_shares: Vec<RecipientShare>) {
-        let admin: Address = env.storage().instance().get(&DataKey::Admin).expect("Not initialized");
+        let admin: Address = env.storage().persistent().get(&DataKey::Admin).expect("Admin entry unavailable; restore and retry");
         admin.require_auth();
 
         let mut total_bp = 0;
@@ -80,6 +100,9 @@ impl RevenueSplitContract {
              return;
         }
         from.require_auth();
+
+        // Ledger sequence verification: prevent duplicate distributions in the same ledger
+        Self::require_unique_ledger(&env);
         
         let shares: Vec<RecipientShare> = env.storage().persistent().get(&DataKey::Recipients).expect("Not initialized");
         env.storage().persistent().extend_ttl(&DataKey::Recipients, 100_000, 500_000);
@@ -104,6 +127,41 @@ impl RevenueSplitContract {
                     client.transfer(&from, &share.destination, &recipient_amount);
                     amount_distributed += recipient_amount;
                 }
+            }
+        }
+    }
+
+    /// Returns the ledger sequence of the last successful distribution.
+    pub fn get_last_distribute_ledger(env: Env) -> u32 {
+        env.storage().persistent().get(&DataKey::LastDistributeLedger).unwrap_or(0)
+    }
+
+    /// Ensures a distribution has not already been executed in the current ledger
+    /// sequence, preventing replay attacks.
+    fn require_unique_ledger(env: &Env) {
+        let current_ledger = env.ledger().sequence();
+        let last_ledger: u32 = env.storage().persistent()
+            .get(&DataKey::LastDistributeLedger)
+            .unwrap_or(0);
+        if last_ledger == current_ledger && current_ledger != 0 {
+            panic!("Distribution already processed in this ledger sequence");
+        }
+        env.storage().persistent().set(&DataKey::LastDistributeLedger, &current_ledger);
+        env.storage().persistent().extend_ttl(
+            &DataKey::LastDistributeLedger,
+            PERSISTENT_TTL_THRESHOLD,
+            PERSISTENT_TTL_EXTEND_TO,
+        );
+    }
+
+    fn bump_core_ttl(env: &Env) {
+        for key in [DataKey::Admin, DataKey::Recipients] {
+            if env.storage().persistent().has(&key) {
+                env.storage().persistent().extend_ttl(
+                    &key,
+                    PERSISTENT_TTL_THRESHOLD,
+                    PERSISTENT_TTL_EXTEND_TO,
+                );
             }
         }
     }
