@@ -15,7 +15,7 @@ import TransactionHistory from './pages/TransactionHistory';
 import RevenueSplitDashboard from './pages/RevenueSplitDashboard';
 import BulkPayrollUpload from './pages/BulkPayrollUpload';
 import PayrollAnalytics from './pages/PayrollAnalytics';
-
+import ContributorRewards from './pages/ContributorRewards';
 import EmployeePortal from './pages/EmployeePortal';
 import Login from './pages/Login';
 import AuthCallback from './pages/AuthCallback';
@@ -186,6 +186,14 @@ function App() {
           element={
             <ErrorBoundary fallback={<ErrorFallback />}>
               <BulkPayrollUpload />
+            </ErrorBoundary>
+          }
+        />
+        <Route
+          path="/rewards"
+          element={
+            <ErrorBoundary fallback={<ErrorFallback />}>
+              <ContributorRewards />
             </ErrorBoundary>
           }
         />
