@@ -177,7 +177,7 @@ describe('EmployeeRemovalConfirmModal', () => {
       expect(defaultProps.onCancel).toHaveBeenCalled();
     });
 
-    it('calls onCancel when backdrop clicked', async () => {
+    it('calls onCancel when backdrop clicked', () => {
       const { container } = render(
         <EmployeeRemovalConfirmModal {...defaultProps} />
       );
@@ -197,7 +197,7 @@ describe('EmployeeRemovalConfirmModal', () => {
       expect(defaultProps.onCancel).not.toHaveBeenCalled();
     });
 
-    it('closes on Escape key', async () => {
+    it('closes on Escape key', () => {
       renderWithI18n(<EmployeeRemovalConfirmModal {...defaultProps} />);
       fireEvent.keyDown(document, { key: 'Escape' });
       expect(defaultProps.onCancel).toHaveBeenCalled();

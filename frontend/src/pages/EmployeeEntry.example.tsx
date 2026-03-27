@@ -79,6 +79,7 @@ export const EmployeeEntry: React.FC = () => {
   const handleRemoveEmployee = useCallback((employeeId: string) => {
     const employee = employees.find((e) => e.id === employeeId);
     if (!employee) {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
       const notifyErrorFn = notifyError as (message: string) => void;
       const errorMsg = t('errors.employeeNotFound', 'Employee not found');
       notifyErrorFn(errorMsg);
@@ -130,6 +131,7 @@ export const EmployeeEntry: React.FC = () => {
         });
 
         // Show success notification
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         const notifySuccessFn = notifySuccess as (message: string) => void;
         const successMsg = t('notifications.employeeRemoved', 'Employee {name} has been removed', {
           name: employee.name,
@@ -145,6 +147,7 @@ export const EmployeeEntry: React.FC = () => {
       } catch (error) {
         const employeeError = error as Record<string, unknown>;
         const msg = (employeeError?.message as string) || 'Unknown error';
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         const notifyErrorFn = notifyError as (message: string) => void;
         const errorMsg = t('errors.employeeRemovalFailed', 'Failed to remove employee: {error}', {
           error: msg,
@@ -214,6 +217,7 @@ export const EmployeeEntry: React.FC = () => {
         employee_name: employee.name,
       });
 
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       const notifySuccessFn = notifySuccess as (message: string) => void;
       const addMsg = t('notifications.employeeAdded', 'Employee {name} has been added', {
         name: newEmployee.name,

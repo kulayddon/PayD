@@ -138,6 +138,7 @@ export default function BulkPayrollUpload() {
     } catch (error: unknown) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       const msg = typeof errorMsg === 'string' ? errorMsg : 'Unknown error occurred';
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
       const notifyErrorFn = notifyError as (title: string, message: string) => void;
       notifyErrorFn('Submission failed', msg);
       console.error('Batch submission error:', error);
