@@ -22,7 +22,7 @@ import { X, AlertTriangle, TrendingUp, Clock, DollarSign, Info } from 'lucide-re
 import { Button } from '@stellar/design-system';
 import { useFeeEstimation } from '../hooks/useFeeEstimation';
 import { stroopsToXLM } from '../services/feeEstimation';
-import type { BatchBudgetEstimate, FeeRecommendation } from '../services/feeEstimation';
+import type { BatchBudgetEstimate } from '../services/feeEstimation';
 import styles from './FeeEstimationConfirmModal.module.css';
 
 // ─────────────────────────────────────────────────────────────────────────────

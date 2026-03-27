@@ -117,7 +117,7 @@ describe('EmployeeRemovalConfirmModal', () => {
       expect(closeBtn).toBeInTheDocument();
     });
 
-    it('has proper tab order and focus management', async () => {
+    it('has proper tab order and focus management', () => {
       renderWithI18n(<EmployeeRemovalConfirmModal {...defaultProps} />);
       const dialog = screen.getByRole('dialog');
       const focusableElements = dialog.querySelectorAll(
@@ -134,7 +134,7 @@ describe('EmployeeRemovalConfirmModal', () => {
       expect(removeBtn).toHaveClass(/removeButton/);
     });
 
-    it('supports focus restoration after close', async () => {
+    it('supports focus restoration after close', () => {
       const { rerender } = renderWithI18n(
         <EmployeeRemovalConfirmModal {...defaultProps} />
       );
@@ -217,7 +217,7 @@ describe('EmployeeRemovalConfirmModal', () => {
   // ========================================================================
 
   describe('Keyboard Navigation', () => {
-    it('handles Tab key for focus management', async () => {
+    it('handles Tab key for focus management', () => {
       renderWithI18n(<EmployeeRemovalConfirmModal {...defaultProps} />);
       const dialog = screen.getByRole('dialog');
       const focusableElements = dialog.querySelectorAll<HTMLElement>(
@@ -226,7 +226,7 @@ describe('EmployeeRemovalConfirmModal', () => {
       expect(focusableElements.length).toBeGreaterThan(0);
     });
 
-    it('handles Shift+Tab from first element', async () => {
+    it('handles Shift+Tab from first element', () => {
       renderWithI18n(<EmployeeRemovalConfirmModal {...defaultProps} />);
       const firstBtn = screen.getByLabelText(/close/i);
       firstBtn.focus();
@@ -235,7 +235,7 @@ describe('EmployeeRemovalConfirmModal', () => {
       expect(document.activeElement).not.toBeNull();
     });
 
-    it('handles Tab from last element', async () => {
+    it('handles Tab from last element', () => {
       renderWithI18n(<EmployeeRemovalConfirmModal {...defaultProps} />);
       const removeBtn = screen.getByText(/remove/i);
       removeBtn.focus();
@@ -244,13 +244,13 @@ describe('EmployeeRemovalConfirmModal', () => {
       expect(document.activeElement).not.toBeNull();
     });
 
-    it('does not close on other keys', async () => {
+    it('does not close on other keys', () => {
       renderWithI18n(<EmployeeRemovalConfirmModal {...defaultProps} />);
       fireEvent.keyDown(document, { key: 'Enter' });
       expect(defaultProps.onCancel).not.toHaveBeenCalled();
     });
 
-    it('allows normal form input in form fields', async () => {
+    it('allows normal form input in form fields', () => {
       renderWithI18n(<EmployeeRemovalConfirmModal {...defaultProps} />);
       fireEvent.keyDown(document, { key: 'a' });
       // Should not close
@@ -504,8 +504,7 @@ describe('EmployeeRemovalConfirmModal', () => {
       expect(screen.getByRole('dialog')).toBeInTheDocument();
     });
 
-    it('works with loading states in succession', async () => {
-      const user = userEvent.setup();
+    it('works with loading states in succession', () => {
       const { rerender } = renderWithI18n(
         <EmployeeRemovalConfirmModal {...defaultProps} isLoading={false} />
       );

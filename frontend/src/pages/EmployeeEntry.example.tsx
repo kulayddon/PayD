@@ -79,7 +79,8 @@ export const EmployeeEntry: React.FC = () => {
   const handleRemoveEmployee = useCallback((employeeId: string) => {
     const employee = employees.find((e) => e.id === employeeId);
     if (!employee) {
-      notifyError(t('errors.employeeNotFound', 'Employee not found'));
+      const notifyErrorFn = notifyError as (message: string) => void;
+      notifyErrorFn(t('errors.employeeNotFound', 'Employee not found'));
       return;
     }
 
@@ -128,7 +129,8 @@ export const EmployeeEntry: React.FC = () => {
         });
 
         // Show success notification
-        notifySuccess(
+        const notifySuccessFn = notifySuccess as (message: string) => void;
+        notifySuccessFn(
           t('notifications.employeeRemoved', 'Employee {name} has been removed', {
             name: employee.name,
           })
@@ -140,14 +142,15 @@ export const EmployeeEntry: React.FC = () => {
           employee_name: employee.name,
           timestamp: new Date().toISOString(),
         });
-      } catch (error) {
+      } catch (error: unknown) {
         console.error('Failed to remove employee:', error);
 
         setIsRemoving(false);
 
         // Show error notification
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        notifyError(
+        const notifyErrorFn = notifyError as (message: string) => void;
+        notifyErrorFn(
           t('errors.employeeRemovalFailed', 'Failed to remove employee: {error}', {
             error: errorMessage,
           })
@@ -216,7 +219,8 @@ export const EmployeeEntry: React.FC = () => {
         employee_name: employee.name,
       });
 
-      notifySuccess(
+      const notifySuccessFn = notifySuccess as (message: string) => void;
+      notifySuccessFn(
         t('notifications.employeeAdded', 'Employee {name} has been added', {
           name: newEmployee.name,
         })

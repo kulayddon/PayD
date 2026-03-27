@@ -12,7 +12,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { I18nextProvider } from 'react-i18next';
@@ -210,7 +210,7 @@ describe('FeeEstimationConfirmModal', () => {
   // Keyboard Navigation & Accessibility
   // ─────────────────────────────────────────────────────────────────────────
 
-  it('should close modal with Escape key', async () => {
+  it('should close modal with Escape key', () => {
     const onCancel = vi.fn();
     render(<FeeEstimationConfirmModal {...defaultProps} onCancel={onCancel} />, {
       wrapper: Wrapper,
@@ -359,7 +359,7 @@ describe('FeeEstimationConfirmModal', () => {
       estimateBatch: vi.fn(),
     });
 
-    const { rerender } = render(
+    render(
       <FeeEstimationConfirmModal {...defaultProps} />,
       { wrapper: Wrapper }
     );

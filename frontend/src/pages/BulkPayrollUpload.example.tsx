@@ -135,7 +135,7 @@ export default function BulkPayrollUpload() {
           currency: primaryCurrency,
         });
       }
-    } catch (error) {
+    } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Unknown error occurred';
       notifyError('Submission failed', message);
       console.error('Batch submission error:', error);
@@ -262,8 +262,8 @@ export default function BulkPayrollUpload() {
                   {invalidRows.length} Row{invalidRows.length !== 1 ? 's' : ''} with Errors
                 </h3>
                 <div className="space-y-2 max-h-60 overflow-y-auto">
-                  {invalidRows.map((row, idx) => (
-                    <div key={idx} className="text-sm text-gray-600 p-2 bg-red-50 rounded">
+                  {invalidRows.map((row) => (
+                    <div key={row.rowNumber} className="text-sm text-gray-600 p-2 bg-red-50 rounded">
                       Row {row.rowNumber}: {row.errors?.join(', ') || 'Unknown error'}
                     </div>
                   ))}
