@@ -5,7 +5,6 @@
  * Issue #118: Improve Date Picker Accessibility
  */
 
-import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -80,11 +79,11 @@ describe('AccessibleDatePicker - Accessibility & Keyboard Navigation', () => {
       expect(input).toHaveAttribute('aria-expanded', 'false');
     });
 
-    it('should have aria-popup="dialog" for calendar', () => {
+    it('should have aria-haspopup="dialog" for calendar', () => {
       render(<AccessibleDatePicker {...defaultProps} />);
 
       const input = screen.getByLabelText('Test Date');
-      expect(input).toHaveAttribute('aria-popup', 'dialog');
+      expect(input).toHaveAttribute('aria-haspopup', 'dialog');
     });
   });
 
@@ -333,7 +332,7 @@ describe('AccessibleDatePicker - Accessibility & Keyboard Navigation', () => {
       });
 
       const monthDisplay = screen.getByRole('button', {
-        name: /of/,
+        name: /^[A-Za-z]+\s\d{4}$/,
       });
 
       expect(monthDisplay).toHaveAttribute('aria-live', 'polite');

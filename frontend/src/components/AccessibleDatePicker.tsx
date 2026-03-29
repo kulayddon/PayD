@@ -339,7 +339,7 @@ export const AccessibleDatePicker: React.FC<AccessibleDatePickerProps> = ({
             aria-required={required}
             aria-disabled={disabled}
             aria-expanded={isOpen}
-            aria-popup="dialog"
+            aria-haspopup="dialog"
           />
 
           {/* Clear Button */}
@@ -411,9 +411,10 @@ export const AccessibleDatePicker: React.FC<AccessibleDatePickerProps> = ({
                 const dateStr = day ? formatDate(new Date(displayYear, displayMonth, day)) : null;
                 const isSelected = dateStr === value;
                 const isHighlighted = dateStr === highlightedDate;
-                const isDisabledDate =
+                const isDisabledDate = Boolean(
                   (minDate && dateStr && dateStr < minDate) ||
-                  (maxDate && dateStr && dateStr > maxDate);
+                    (maxDate && dateStr && dateStr > maxDate)
+                );
 
                 return (
                   <button
